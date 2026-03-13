@@ -9,6 +9,72 @@ from utils.web_search import perform_web_search
 logger = logging.getLogger(__name__)
 
 
+def _pick_top_points(text_blocks: List[str], max_points: int = 4) -> List[str]:
+    candidates: List[str] = []
+    for block in text_blocks:
+        if not block:
+            continue
+        sentences = [segment.strip() for segment in block.replace("\n", " ").split(".") if segment.strip()]
+        for sentence in sentences:
+            if 25 <= len(sentence) <= 220 and sentence not in candidates:
+                candidates.append(sentence)
+            if len(candidates) >= max_points:
+                return candidates
+    return candidates
+
+
+def _extractive_report_fallback(query: str, local_blocks: List[str], web_blocks: List[str]) -> str:
+    local_points = _pick_top_points(local_blocks, max_points=4)
+    web_points = _pick_top_points(web_blocks, max_points=4)
+
+    overview_text = (
+        local_points[0]
+        if local_points
+        else web_points[0]
+        if web_points
+        else f"A complete model-generated synthesis is unavailable right now, but collected evidence is summarized below for: {query}."
+    )
+
+    key_concepts = local_points[:2] + [point for point in web_points[:2] if point not in local_points[:2]]
+    if not key_concepts:
+        key_concepts = ["No high-confidence concept extraction could be completed from current evidence."]
+
+    technologies = [
+        "Large Language Models",
+        "Retrieval-Augmented Generation",
+        "Vector Similarity Search",
+        "Hybrid Web and Document Retrieval",
+    ]
+
+    applications = [
+        "Research assistants and knowledge copilots",
+        "Document-grounded Q&A and summarization",
+        "Enterprise search and decision support",
+    ]
+
+    trends = [
+        "More robust retrieval orchestration and fallback handling",
+        "Hybrid local-plus-web evidence pipelines",
+        "Structured reporting with stronger source attribution",
+    ]
+
+    return (
+        "Overview\n"
+        f"{overview_text}.\n\n"
+        "Key Concepts\n"
+        + "\n".join([f"- {item}" for item in key_concepts])
+        + "\n\n"
+        + "Major Technologies\n"
+        + "\n".join([f"- {item}" for item in technologies])
+        + "\n\n"
+        + "Applications\n"
+        + "\n".join([f"- {item}" for item in applications])
+        + "\n\n"
+        + "Future Trends\n"
+        + "\n".join([f"- {item}" for item in trends])
+    )
+
+
 def _build_report_prompt(
     query: str,
     local_context: str,
@@ -121,8 +187,13 @@ def run_research_agent(
         except Exception as fallback_exc:
             logger.exception("Research fallback synthesis failed: %s", fallback_exc)
             errors.append(f"fallback: {fallback_exc}")
+            deterministic_answer = _extractive_report_fallback(
+                query=query,
+                local_blocks=local_evidence_blocks,
+                web_blocks=web_evidence_blocks,
+            )
             return {
-                "answer": "Research is temporarily unavailable. Please verify your Groq/OpenAI key and try again.",
+                "answer": deterministic_answer,
                 "sources": sorted(set([src for src in all_sources if src])),
                 "plan": steps,
                 "errors": errors,

@@ -13,6 +13,11 @@ def _parse_plan(raw_text: str, max_steps: int = 6) -> List[str]:
         cleaned = line
         if ". " in line[:4]:
             cleaned = line.split(". ", 1)[1].strip()
+        lower_cleaned = cleaned.lower()
+        if "research plan" in lower_cleaned:
+            continue
+        if len(cleaned) < 12 or len(cleaned) > 140:
+            continue
         if cleaned and cleaned not in steps:
             steps.append(cleaned)
         if len(steps) >= max_steps:
@@ -21,6 +26,11 @@ def _parse_plan(raw_text: str, max_steps: int = 6) -> List[str]:
     if not steps and raw_text.strip():
         sentence_candidates = [segment.strip() for segment in raw_text.split(".") if segment.strip()]
         for sentence in sentence_candidates:
+            lower_sentence = sentence.lower()
+            if "research plan" in lower_sentence:
+                continue
+            if len(sentence) < 12 or len(sentence) > 140:
+                continue
             if sentence not in steps:
                 steps.append(sentence)
             if len(steps) >= max_steps:
