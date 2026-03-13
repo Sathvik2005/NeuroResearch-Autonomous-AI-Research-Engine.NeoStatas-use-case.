@@ -3,6 +3,7 @@ from typing import List
 
 import streamlit as st
 
+from config.config import settings
 from models.llm import generate_response
 from utils.query_router import route_query
 from utils.rag_pipeline import build_vector_store_from_uploads, compose_rag_prompt, retrieve_rag_context
@@ -61,7 +62,21 @@ with st.sidebar:
 
     response_mode = st.radio("Response Mode", ["concise", "detailed"], index=0)
     system_mode = st.radio("System Mode", ["chat", "research", "deep research"], index=0)
-    provider = st.selectbox("LLM Provider", ["openai", "groq"], index=0)
+
+    provider_options = []
+    if settings.groq_api_key:
+        provider_options.append("groq")
+    if settings.openai_api_key:
+        provider_options.append("openai")
+    if not provider_options:
+        provider_options = ["groq", "openai"]
+
+    preferred_provider = settings.llm_provider if settings.llm_provider in provider_options else "groq"
+    default_provider_idx = provider_options.index(preferred_provider) if preferred_provider in provider_options else 0
+    provider = st.selectbox("LLM Provider", provider_options, index=default_provider_idx)
+
+    if not settings.groq_api_key and not settings.openai_api_key:
+        st.warning("No LLM API key configured. Add GROQ_API_KEY or OPENAI_API_KEY in Streamlit secrets.")
 
     st.caption(
         f"Indexed documents: {st.session_state.indexed_docs_count} | "

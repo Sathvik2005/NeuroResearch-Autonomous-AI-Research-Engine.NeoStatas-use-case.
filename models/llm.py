@@ -15,6 +15,14 @@ MODE_INSTRUCTIONS = {
 }
 
 
+def _has_provider_key(provider: str) -> bool:
+    if provider == "openai":
+        return bool(settings.openai_api_key)
+    if provider == "groq":
+        return bool(settings.groq_api_key)
+    return False
+
+
 def _build_prompt(prompt: str, mode: str) -> str:
     instruction = MODE_INSTRUCTIONS.get(mode, MODE_INSTRUCTIONS["concise"])
     return f"{instruction}\n\nUser request:\n{prompt}"
@@ -52,6 +60,14 @@ def generate_response(
 ) -> str:
     selected_provider = (provider or settings.llm_provider).lower()
     full_prompt = _build_prompt(prompt, mode)
+
+    if not _has_provider_key(selected_provider):
+        if selected_provider == "openai" and _has_provider_key("groq"):
+            logger.info("OpenAI key missing. Falling back to Groq.")
+            selected_provider = "groq"
+        elif selected_provider == "groq" and _has_provider_key("openai"):
+            logger.info("Groq key missing. Falling back to OpenAI.")
+            selected_provider = "openai"
 
     try:
         if selected_provider == "openai":
