@@ -17,6 +17,15 @@ def _parse_plan(raw_text: str, max_steps: int = 6) -> List[str]:
             steps.append(cleaned)
         if len(steps) >= max_steps:
             break
+
+    if not steps and raw_text.strip():
+        sentence_candidates = [segment.strip() for segment in raw_text.split(".") if segment.strip()]
+        for sentence in sentence_candidates:
+            if sentence not in steps:
+                steps.append(sentence)
+            if len(steps) >= max_steps:
+                break
+
     return steps
 
 

@@ -108,7 +108,8 @@ with st.sidebar:
     default_provider_idx = provider_options.index(preferred_provider) if preferred_provider in provider_options else 0
     provider = st.selectbox("LLM Provider", provider_options, index=default_provider_idx)
 
-    if not provider_options:
+    has_any_llm_key = bool(settings.groq_api_key or settings.openai_api_key or runtime_provider_keys)
+    if not has_any_llm_key:
         st.warning("No LLM API key configured. Add GROQ_API_KEY or OPENAI_API_KEY in Streamlit secrets.")
 
     st.caption(
@@ -155,6 +156,9 @@ if user_query:
                     answer = research_output.get("answer", "")
                     sources.extend(research_output.get("sources", []))
                     plan = research_output.get("plan", [])
+                    research_errors = research_output.get("errors", [])
+                    if research_errors:
+                        st.warning("Research completed with partial fallbacks. Some sources may be unavailable.")
                     if plan:
                         plan_block = "\n".join([f"{idx + 1}. {step}" for idx, step in enumerate(plan)])
                         extra_sections.append(f"Research Plan:\n{plan_block}")

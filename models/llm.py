@@ -15,6 +15,20 @@ MODE_INSTRUCTIONS = {
 }
 
 
+def _provider_sequence(selected_provider: str, provider_keys: Optional[Dict[str, str]] = None):
+    sequence = [selected_provider]
+    if selected_provider == "openai":
+        sequence.append("groq")
+    elif selected_provider == "groq":
+        sequence.append("openai")
+    else:
+        sequence = ["openai", "groq"]
+
+    runtime_keys = provider_keys or {}
+    available = [provider for provider in sequence if _has_provider_key(provider, runtime_keys)]
+    return available
+
+
 def _has_provider_key(provider: str, provider_keys: Optional[Dict[str, str]] = None) -> bool:
     runtime_keys = provider_keys or {}
     if provider == "openai":
@@ -66,26 +80,26 @@ def generate_response(
     full_prompt = _build_prompt(prompt, mode)
     runtime_keys = provider_keys or {}
 
-    if not _has_provider_key(selected_provider, runtime_keys):
-        if selected_provider == "openai" and _has_provider_key("groq", runtime_keys):
-            logger.info("OpenAI key missing. Falling back to Groq.")
-            selected_provider = "groq"
-        elif selected_provider == "groq" and _has_provider_key("openai", runtime_keys):
-            logger.info("Groq key missing. Falling back to OpenAI.")
-            selected_provider = "openai"
+    candidate_providers = _provider_sequence(selected_provider, runtime_keys)
+    if not candidate_providers:
+        raise ValueError("No valid LLM API key found. Configure GROQ_API_KEY or OPENAI_API_KEY.")
 
-    try:
-        if selected_provider == "openai":
-            return _call_openai(full_prompt, model_name, runtime_keys.get("openai"))
-        if selected_provider == "groq":
-            return _call_groq(full_prompt, model_name, runtime_keys.get("groq"))
-        raise ValueError(f"Unsupported LLM provider: {selected_provider}")
-    except RateLimitError as exc:
-        logger.exception("LLM generation failed with rate/quota error: %s", exc)
-        if selected_provider == "openai" and _has_provider_key("groq", runtime_keys):
-            logger.info("Falling back from OpenAI to Groq due to OpenAI quota/rate-limit error.")
-            return _call_groq(full_prompt, None, runtime_keys.get("groq"))
-        raise
-    except Exception as exc:
-        logger.exception("LLM generation failed: %s", exc)
-        raise
+    provider_errors = []
+
+    for candidate in candidate_providers:
+        try:
+            if candidate == "openai":
+                return _call_openai(full_prompt, model_name, runtime_keys.get("openai"))
+            if candidate == "groq":
+                return _call_groq(full_prompt, model_name, runtime_keys.get("groq"))
+        except RateLimitError as exc:
+            logger.exception("OpenAI quota/rate-limit error: %s", exc)
+            provider_errors.append(f"{candidate}: rate-limit or quota")
+            continue
+        except Exception as exc:
+            logger.exception("LLM generation failed for provider %s: %s", candidate, exc)
+            provider_errors.append(f"{candidate}: {exc}")
+            continue
+
+    summarized = "; ".join(provider_errors[:2])
+    raise RuntimeError(f"All LLM providers failed. {summarized}")

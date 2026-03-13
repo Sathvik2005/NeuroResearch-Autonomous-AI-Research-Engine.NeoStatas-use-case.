@@ -40,11 +40,12 @@ def run_research_agent(
     provider_keys: Optional[Dict[str, str]] = None,
     tavily_api_key: Optional[str] = None,
 ) -> Dict:
-    try:
-        all_sources: List[str] = []
-        local_evidence_blocks: List[str] = []
-        web_evidence_blocks: List[str] = []
+    all_sources: List[str] = []
+    local_evidence_blocks: List[str] = []
+    web_evidence_blocks: List[str] = []
+    errors: List[str] = []
 
+    try:
         steps = (
             generate_research_plan(
                 query,
@@ -54,47 +55,82 @@ def run_research_agent(
             if deep_research
             else []
         )
-        execution_steps = steps if steps else [query]
+    except Exception as exc:
+        logger.exception("Research planning phase failed: %s", exc)
+        steps = []
+        errors.append(f"planning: {exc}")
 
-        for step in execution_steps:
+    execution_steps = steps if steps else [query]
+
+    for step in execution_steps:
+        try:
             local_context, local_sources, _ = retrieve_rag_context(step, vector_store, top_k=4)
+            if local_context:
+                local_evidence_blocks.append(local_context)
+            all_sources.extend(local_sources)
+        except Exception as exc:
+            logger.exception("RAG step failed for '%s': %s", step, exc)
+            errors.append(f"rag({step}): {exc}")
+
+        try:
             web_context, web_sources, _ = perform_web_search(
                 step,
                 max_results=4,
                 api_key=tavily_api_key,
             )
-
-            if local_context:
-                local_evidence_blocks.append(local_context)
             if web_context:
                 web_evidence_blocks.append(web_context)
-
-            all_sources.extend(local_sources)
             all_sources.extend(web_sources)
+        except Exception as exc:
+            logger.exception("Web step failed for '%s': %s", step, exc)
+            errors.append(f"web({step}): {exc}")
 
-        prompt = _build_report_prompt(
-            query=query,
-            local_context="\n\n".join(local_evidence_blocks),
-            web_context="\n\n".join(web_evidence_blocks),
-            steps=steps,
-        )
+    prompt = _build_report_prompt(
+        query=query,
+        local_context="\n\n".join(local_evidence_blocks),
+        web_context="\n\n".join(web_evidence_blocks),
+        steps=steps,
+    )
 
+    try:
         answer = generate_response(
             prompt=prompt,
             mode="detailed" if response_mode == "detailed" else "concise",
             provider=provider,
             provider_keys=provider_keys,
         )
-
-        return {
-            "answer": answer,
-            "sources": sorted(set([src for src in all_sources if src])),
-            "plan": steps,
-        }
     except Exception as exc:
-        logger.exception("Research agent failed: %s", exc)
-        return {
-            "answer": "The research workflow failed due to an internal error.",
-            "sources": [],
-            "plan": [],
-        }
+        logger.exception("Research synthesis failed: %s", exc)
+        errors.append(f"synthesis: {exc}")
+
+        fallback_prompt = (
+            "Provide a helpful answer to the query using available evidence. "
+            "If evidence is missing, answer from general knowledge and mention limitations.\n\n"
+            f"Query: {query}\n\n"
+            f"Local evidence: {' | '.join(local_evidence_blocks[:2]) or 'none'}\n\n"
+            f"Web evidence: {' | '.join(web_evidence_blocks[:2]) or 'none'}"
+        )
+
+        try:
+            answer = generate_response(
+                prompt=fallback_prompt,
+                mode="concise" if response_mode == "concise" else "detailed",
+                provider=provider,
+                provider_keys=provider_keys,
+            )
+        except Exception as fallback_exc:
+            logger.exception("Research fallback synthesis failed: %s", fallback_exc)
+            errors.append(f"fallback: {fallback_exc}")
+            return {
+                "answer": "Research is temporarily unavailable. Please verify your Groq/OpenAI key and try again.",
+                "sources": sorted(set([src for src in all_sources if src])),
+                "plan": steps,
+                "errors": errors,
+            }
+
+    return {
+        "answer": answer,
+        "sources": sorted(set([src for src in all_sources if src])),
+        "plan": steps,
+        "errors": errors,
+    }
