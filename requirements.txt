@@ -1,0 +1,10 @@
+streamlit
+openai
+groq
+google-generativeai
+sentence-transformers; platform_system != "Windows"
+faiss-cpu; platform_system != "Windows"
+pypdf
+tavily-python
+python-dotenv
+numpy
