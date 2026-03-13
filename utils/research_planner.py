@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from models.llm import generate_response
 
@@ -24,6 +24,7 @@ def generate_research_plan(
     query: str,
     provider: Optional[str] = None,
     max_steps: int = 5,
+    provider_keys: Optional[Dict[str, str]] = None,
 ) -> List[str]:
     try:
         prompt = (
@@ -31,7 +32,12 @@ def generate_research_plan(
             "Return only numbered steps.\n\n"
             f"Query: {query}"
         )
-        plan_text = generate_response(prompt=prompt, mode="concise", provider=provider)
+        plan_text = generate_response(
+            prompt=prompt,
+            mode="concise",
+            provider=provider,
+            provider_keys=provider_keys,
+        )
         steps = _parse_plan(plan_text, max_steps=max_steps)
         if steps:
             return steps

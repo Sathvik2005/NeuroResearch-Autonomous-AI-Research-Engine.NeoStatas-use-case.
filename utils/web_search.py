@@ -21,12 +21,17 @@ def summarize_search_results(results: List[Dict], max_chars: int = 2200) -> str:
     return summary[:max_chars]
 
 
-def perform_web_search(query: str, max_results: int = None) -> Tuple[str, List[str], List[Dict]]:
+def perform_web_search(
+    query: str,
+    max_results: int = None,
+    api_key: str = None,
+) -> Tuple[str, List[str], List[Dict]]:
     try:
-        if not settings.tavily_api_key:
+        key_to_use = api_key or settings.tavily_api_key
+        if not key_to_use:
             raise ValueError("TAVILY_API_KEY is not configured.")
 
-        client = TavilyClient(api_key=settings.tavily_api_key)
+        client = TavilyClient(api_key=key_to_use)
         result = client.search(
             query=query,
             max_results=max_results or settings.max_search_results,

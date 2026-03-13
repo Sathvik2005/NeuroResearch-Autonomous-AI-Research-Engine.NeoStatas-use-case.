@@ -37,18 +37,32 @@ def run_research_agent(
     response_mode: str = "detailed",
     deep_research: bool = False,
     provider: Optional[str] = None,
+    provider_keys: Optional[Dict[str, str]] = None,
+    tavily_api_key: Optional[str] = None,
 ) -> Dict:
     try:
         all_sources: List[str] = []
         local_evidence_blocks: List[str] = []
         web_evidence_blocks: List[str] = []
 
-        steps = generate_research_plan(query, provider=provider) if deep_research else []
+        steps = (
+            generate_research_plan(
+                query,
+                provider=provider,
+                provider_keys=provider_keys,
+            )
+            if deep_research
+            else []
+        )
         execution_steps = steps if steps else [query]
 
         for step in execution_steps:
             local_context, local_sources, _ = retrieve_rag_context(step, vector_store, top_k=4)
-            web_context, web_sources, _ = perform_web_search(step, max_results=4)
+            web_context, web_sources, _ = perform_web_search(
+                step,
+                max_results=4,
+                api_key=tavily_api_key,
+            )
 
             if local_context:
                 local_evidence_blocks.append(local_context)
@@ -69,6 +83,7 @@ def run_research_agent(
             prompt=prompt,
             mode="detailed" if response_mode == "detailed" else "concise",
             provider=provider,
+            provider_keys=provider_keys,
         )
 
         return {

@@ -34,6 +34,12 @@ def _init_state() -> None:
         st.session_state.indexed_docs_count = 0
     if "indexed_chunks_count" not in st.session_state:
         st.session_state.indexed_chunks_count = 0
+    if "runtime_openai_key" not in st.session_state:
+        st.session_state.runtime_openai_key = ""
+    if "runtime_groq_key" not in st.session_state:
+        st.session_state.runtime_groq_key = ""
+    if "runtime_tavily_key" not in st.session_state:
+        st.session_state.runtime_tavily_key = ""
 
 
 _init_state()
@@ -63,10 +69,37 @@ with st.sidebar:
     response_mode = st.radio("Response Mode", ["concise", "detailed"], index=0)
     system_mode = st.radio("System Mode", ["chat", "research", "deep research"], index=0)
 
+    st.subheader("Deployment Keys")
+    st.session_state.runtime_openai_key = st.text_input(
+        "OpenAI Deployment Key",
+        value=st.session_state.runtime_openai_key,
+        type="password",
+        placeholder="Optional runtime override",
+    )
+    st.session_state.runtime_groq_key = st.text_input(
+        "Groq Deployment Key",
+        value=st.session_state.runtime_groq_key,
+        type="password",
+        placeholder="Optional runtime override",
+    )
+    st.session_state.runtime_tavily_key = st.text_input(
+        "Tavily Deployment Key",
+        value=st.session_state.runtime_tavily_key,
+        type="password",
+        placeholder="Optional runtime override",
+    )
+
+    runtime_provider_keys = {
+        "openai": st.session_state.runtime_openai_key.strip(),
+        "groq": st.session_state.runtime_groq_key.strip(),
+    }
+    runtime_provider_keys = {k: v for k, v in runtime_provider_keys.items() if v}
+    runtime_tavily_key = st.session_state.runtime_tavily_key.strip()
+
     provider_options = []
-    if settings.groq_api_key:
+    if settings.groq_api_key or runtime_provider_keys.get("groq"):
         provider_options.append("groq")
-    if settings.openai_api_key:
+    if settings.openai_api_key or runtime_provider_keys.get("openai"):
         provider_options.append("openai")
     if not provider_options:
         provider_options = ["groq", "openai"]
@@ -75,7 +108,7 @@ with st.sidebar:
     default_provider_idx = provider_options.index(preferred_provider) if preferred_provider in provider_options else 0
     provider = st.selectbox("LLM Provider", provider_options, index=default_provider_idx)
 
-    if not settings.groq_api_key and not settings.openai_api_key:
+    if not provider_options:
         st.warning("No LLM API key configured. Add GROQ_API_KEY or OPENAI_API_KEY in Streamlit secrets.")
 
     st.caption(
@@ -116,6 +149,8 @@ if user_query:
                         response_mode=response_mode,
                         deep_research=selected_route == "deep_research",
                         provider=provider,
+                        provider_keys=runtime_provider_keys,
+                        tavily_api_key=runtime_tavily_key or None,
                     )
                     answer = research_output.get("answer", "")
                     sources.extend(research_output.get("sources", []))
@@ -128,14 +163,22 @@ if user_query:
                     rag_context, rag_sources, _ = retrieve_rag_context(
                         user_query, st.session_state.vector_store
                     )
-                    web_context, web_sources, _ = perform_web_search(user_query)
+                    web_context, web_sources, _ = perform_web_search(
+                        user_query,
+                        api_key=runtime_tavily_key or None,
+                    )
                     hybrid_prompt = (
                         "Use both local document evidence and web evidence to answer the query.\n\n"
                         f"Question:\n{user_query}\n\n"
                         f"Document evidence:\n{rag_context or 'No document evidence found.'}\n\n"
                         f"Web evidence:\n{web_context or 'No web evidence found.'}"
                     )
-                    answer = generate_response(hybrid_prompt, mode=response_mode, provider=provider)
+                    answer = generate_response(
+                        hybrid_prompt,
+                        mode=response_mode,
+                        provider=provider,
+                        provider_keys=runtime_provider_keys,
+                    )
                     sources.extend(rag_sources)
                     sources.extend(web_sources)
 
@@ -144,21 +187,39 @@ if user_query:
                         user_query, st.session_state.vector_store
                     )
                     rag_prompt = compose_rag_prompt(user_query, rag_context, mode=response_mode)
-                    answer = generate_response(rag_prompt, mode=response_mode, provider=provider)
+                    answer = generate_response(
+                        rag_prompt,
+                        mode=response_mode,
+                        provider=provider,
+                        provider_keys=runtime_provider_keys,
+                    )
                     sources.extend(rag_sources)
 
                 elif selected_route == "web":
-                    web_context, web_sources, _ = perform_web_search(user_query)
+                    web_context, web_sources, _ = perform_web_search(
+                        user_query,
+                        api_key=runtime_tavily_key or None,
+                    )
                     web_prompt = (
                         "Answer using this web research summary and mention uncertainty where needed.\n\n"
                         f"Question:\n{user_query}\n\n"
                         f"Web summary:\n{web_context}"
                     )
-                    answer = generate_response(web_prompt, mode=response_mode, provider=provider)
+                    answer = generate_response(
+                        web_prompt,
+                        mode=response_mode,
+                        provider=provider,
+                        provider_keys=runtime_provider_keys,
+                    )
                     sources.extend(web_sources)
 
                 else:
-                    answer = generate_response(user_query, mode=response_mode, provider=provider)
+                    answer = generate_response(
+                        user_query,
+                        mode=response_mode,
+                        provider=provider,
+                        provider_keys=runtime_provider_keys,
+                    )
 
                 source_block = _format_sources(sources)
                 full_response_parts = [answer]
