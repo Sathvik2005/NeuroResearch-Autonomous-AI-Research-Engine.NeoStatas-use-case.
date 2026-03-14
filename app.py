@@ -32,8 +32,14 @@ st.markdown("""
     color: #dde1f0;
 }
 .block-container { padding-top: 2rem !important; padding-bottom: 3rem !important; }
-header[data-testid="stHeader"] { display: none !important; }
-#MainMenu, footer { display: none !important; }
+/* Keep Streamlit chrome available in deployment so users can reopen sidebar */
+header[data-testid="stHeader"] {
+    display: block !important;
+    background: transparent !important;
+    border-bottom: none !important;
+}
+#MainMenu { display: block !important; }
+footer { display: none !important; }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
@@ -378,6 +384,39 @@ st.markdown(f"""
     "></div>
 </div>
 """, unsafe_allow_html=True)
+
+# Main-panel fallback for deployments where sidebar may be collapsed on small screens.
+with st.expander("API Keys (Fallback)", expanded=not has_any_llm_key):
+    st.caption("Use this section if the sidebar is not visible in your deployed app.")
+
+    main_openai_key = st.text_input(
+        "OpenAI key (main panel)",
+        value=st.session_state.runtime_openai_key,
+        type="password",
+        placeholder="sk-...",
+        key="main_openai_key",
+    )
+    main_groq_key = st.text_input(
+        "Groq key (main panel)",
+        value=st.session_state.runtime_groq_key,
+        type="password",
+        placeholder="gsk_...",
+        key="main_groq_key",
+    )
+    main_tavily_key = st.text_input(
+        "Tavily key (main panel)",
+        value=st.session_state.runtime_tavily_key,
+        type="password",
+        placeholder="tvly-...",
+        key="main_tavily_key",
+    )
+
+    if main_openai_key != st.session_state.runtime_openai_key:
+        st.session_state.runtime_openai_key = main_openai_key
+    if main_groq_key != st.session_state.runtime_groq_key:
+        st.session_state.runtime_groq_key = main_groq_key
+    if main_tavily_key != st.session_state.runtime_tavily_key:
+        st.session_state.runtime_tavily_key = main_tavily_key
 
 # Welcome card when conversation is empty
 if not st.session_state.messages:
